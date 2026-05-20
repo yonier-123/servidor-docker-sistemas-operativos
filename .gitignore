@@ -1,0 +1,4 @@
+.env
+postgres-data/
+jupyter-data/.ipynb_checkpoints/
+node-api/node_modules/

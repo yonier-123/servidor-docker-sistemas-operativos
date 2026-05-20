@@ -1,0 +1,81 @@
+# Definición de redes lógicas para aislar el tráfico (Seguridad)
+networks:
+  red-backend:
+    driver: bridge
+  red-frontend:
+    driver: bridge
+
+# Definición del espacio de almacenamiento persistente para la BD
+volumes:
+  datos-postgres:
+    driver: local
+
+services:
+  # 1. Servidor Web Nginx (Puerta de enlace)
+  web-server:
+    image: nginx:alpine
+    container_name: contenedor-nginx
+    ports:
+      - "8080:80"  # Mapea el puerto 8080 de tu Ubuntu al 80 interno del contenedor
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro  # Inyecta tu configuración local (:ro = Solo Lectura)
+    networks:
+      - red-frontend
+    depends_on:
+      - node-service
+
+  # 2. Servidor de Aplicaciones Node.js (Tu API)
+  node-service:
+    build: ./node-api  # Indica a Docker que compile el Dockerfile que está en esa carpeta
+    container_name: contenedor-node
+    environment:
+      - DB_HOST=db-service  # Se conecta usando el nombre del servicio como DNS interno
+      - DB_USER=${POSTGRES_USER}      # Lee los valores mapeados desde tu archivo .env
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+    networks:
+      - red-frontend
+      - red-backend
+    depends_on:
+      - db-service
+
+  # 3. Motor de Base de Datos PostgreSQL
+  db-service:
+    image: postgres:15-alpine
+    container_name: contenedor-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - datos-postgres:/var/lib/postgresql/data  # Persistencia de datos en volumen administrado
+    networks:
+      - red-backend
+
+  # 4. Administrador de Base de Datos pgAdmin 4 (Interfaz Web)
+  pgadmin-service:
+    image: dpage/pgadmin4
+    container_name: contenedor-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"  # Acceso web a pgAdmin en el puerto 5050
+    networks:
+      - red-frontend
+      - red-backend
+    depends_on:
+      - db-service
+
+  # 5. Entorno de Ciencia de Datos Jupyter Lab
+  jupyter-service:
+    image: jupyter/base-notebook
+    container_name: contenedor-jupyter
+    ports:
+      - "8888:8888"  # Acceso web a Jupyter en el puerto 8888
+    environment:
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN}
+    volumes:
+      - ./jupyter-data:/home/jovyan/work  # Sincroniza tu carpeta local con el espacio de trabajo de Jupyter
+    networks:
+      - red-frontend
